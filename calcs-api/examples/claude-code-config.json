@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "calcs-api": {
+      "command": "node",
+      "args": ["./dist/index.js"],
+      "cwd": "/path/to/mcp-servers/calcs-api",
+      "env": {
+        "CALCS_API_TOKEN": "your_bearer_token_here",
+        "CALCS_DEFAULT_CLIENT": "your_client_name",
+        "CALCS_API_BASE_URL": "https://staging-app.marketdial.dev/calcs"
+      }
+    }
+  }
+}

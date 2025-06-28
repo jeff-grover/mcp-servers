@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "calcs-api": {
+      "command": "node",
+      "args": ["./dist/index.js"],
+      "cwd": "/Users/jgrover/Code/mcp-servers/calcs-api"
+    }
+  }
+}
