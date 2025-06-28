@@ -1,0 +1,10 @@
+[project]
+name = "mcp-servers"
+version = "1.0.0"
+description = "Collection of Model Context Protocol (MCP) servers"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["calcs-api"]

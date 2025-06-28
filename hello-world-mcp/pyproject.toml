@@ -1,0 +1,24 @@
+[project]
+name = "hello-world-mcp"
+version = "0.1.0"
+description = "A simple hello world MCP server"
+authors = [
+    {name = "MCP Demo", email = "demo@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "fastapi",
+    "uvicorn",
+]
+
+[project.scripts]
+hello-world-mcp = "hello_world_mcp.server:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

@@ -1,78 +1,119 @@
 # MCP Servers
 
-A collection of Model Context Protocol (MCP) servers that provide Claude Code with specialized functionality for various development and analytics tasks.
+A collection of Model Context Protocol (MCP) servers that provide Claude Code and Cursor with specialized functionality for various development and analytics tasks.
 
 ## Current Servers
+
+### hello-world-mcp
+A simple demonstration MCP server in Python that showcases basic MCP functionality with two tools:
+- `say_hello` - Returns a friendly greeting message
+- `get_random_fact` - Returns random fun facts
+
+**Location**: `hello-world-mcp/`
+**Port**: 8000
+**Documentation**: See individual server README in `hello-world-mcp/README.md`
 
 ### calcs-api
 MCP server that provides access to the Calcs API for retail analytics calculations and test management. Acts as a bridge between Claude and the Calcs API, offering comprehensive tools for managing A/B tests, analyses, and retrieving retail analytics data.
 
 **Location**: `calcs-api/`
+**Port**: 8001
 **Documentation**: See individual server README in `calcs-api/README.md`
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18 or higher
-- npm
+- Python 3.10 or higher
+- UV package manager (recommended) or pip
+- Claude Code CLI
 
 ### Installation
-```bash
-# Install all dependencies for all servers
-npm run install:all
 
-# Or install individually
-npm install              # Root dependencies
-cd calcs-api && npm install  # calcs-api dependencies
+Each server can be installed and run independently:
+
+```bash
+# Install hello-world-mcp
+cd hello-world-mcp
+uv sync
+
+# Install calcs-api
+cd ../calcs-api
+uv sync
 ```
 
-### Building
-```bash
-# Build all servers
-npm run build
+### Running Servers
 
-# Build specific server
-npm run build:calcs-api
+Start each server in its own terminal:
+
+```bash
+# Terminal 1: Start hello-world server (port 8000)
+cd hello-world-mcp
+uv run hello-world-mcp
+
+# Terminal 2: Start calcs-api server (port 8001)
+cd calcs-api
+uv run calcs-api
 ```
 
-### Development
+### Connecting to Claude Code
+
+Add servers using Claude Code CLI commands:
+
 ```bash
-# Run calcs-api in development mode
-npm run dev:calcs-api
+# Add hello-world-mcp server
+claude mcp add --transport sse hello-world-mcp http://localhost:8000/messages
 
-# Type check all servers
-npm run type-check
+# Add calcs-api server (requires environment variables)
+claude mcp add --transport sse calcs-api http://localhost:8001/messages
 
-# Type check specific server
-npm run type-check:calcs-api
+# Start Claude Code with MCP servers
+claude
 ```
 
-## Available Commands
+### Connecting to Cursor
 
-| Command | Description |
-|---------|-------------|
-| `npm run build` | Build all MCP servers |
-| `npm run build:calcs-api` | Build only the calcs-api server |
-| `npm run dev:calcs-api` | Run calcs-api in development mode |
-| `npm run start:calcs-api` | Start calcs-api production build |
-| `npm run type-check` | Type check all servers |
-| `npm run type-check:calcs-api` | Type check calcs-api only |
-| `npm run install:all` | Install dependencies for all servers |
+Add servers to your Cursor settings by opening Cursor settings (Cmd/Ctrl + ,) and adding:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "hello-world-mcp": {
+        "transport": {
+          "type": "sse",
+          "url": "http://localhost:8000/messages"
+        }
+      },
+      "calcs-api": {
+        "transport": {
+          "type": "sse", 
+          "url": "http://localhost:8001/messages"
+        }
+      }
+    }
+  }
+}
+```
 
 ## Repository Structure
 
 ```
 mcp-servers/
-├── README.md              # This file
-├── CLAUDE.md             # Claude Code guidance
-├── package.json          # Root package.json with workspace management
-├── calcs-api/            # Calcs API MCP server
+├── README.md                    # This file
+├── CLAUDE.md                   # Claude Code guidance
+├── package.json                # Root package.json (legacy Node.js structure)
+├── hello-world-mcp/            # Simple demo MCP server (Python/UV)
 │   ├── README.md
-│   ├── package.json
-│   ├── src/
-│   ├── dist/
+│   ├── pyproject.toml
+│   ├── hello_world_mcp/
+│   └── claude-code-config.json
+├── calcs-api/                  # Calcs API MCP server (Python/UV)
+│   ├── README.md
+│   ├── pyproject.toml
+│   ├── calcs_api/
+│   ├── claude-code-config.json
 │   └── examples/
-└── [future-server]/      # Additional servers go here
+└── [future-server]/            # Additional servers go here
 ```
 
 ## Adding New Servers
@@ -81,52 +122,112 @@ To add a new MCP server to this repository:
 
 1. **Create a new directory** for your server (e.g., `my-new-server/`)
 
-2. **Initialize the server** with its own `package.json`:
+2. **Initialize the server** with UV and pyproject.toml:
    ```bash
    mkdir my-new-server
    cd my-new-server
-   npm init -y
+   uv init --package
    ```
 
-3. **Update root package.json** to include your server:
-   ```json
-   {
-     "workspaces": [
-       "calcs-api",
-       "my-new-server"
-     ],
-     "scripts": {
-       "build": "npm run build:calcs-api && npm run build:my-new-server",
-       "build:my-new-server": "cd my-new-server && npm run build",
-       "dev:my-new-server": "cd my-new-server && npm run dev"
-     }
-   }
+3. **Set up MCP dependencies** in `pyproject.toml`:
+   ```toml
+   [project]
+   name = "my-new-server"
+   version = "0.1.0"
+   requires-python = ">=3.10"
+   dependencies = [
+       "mcp>=1.0.0",
+       "fastapi>=0.100.0",
+       "uvicorn>=0.20.0",
+   ]
+
+   [project.scripts]
+   my-new-server = "my_new_server.server:run"
    ```
 
 4. **Follow MCP server conventions**:
-   - Use `"type": "module"` in package.json
-   - Entry point should be `dist/index.js` after build
-   - Include `build`, `dev`, `start`, and `type-check` scripts
-   - Use Node.js 18+ compatible code
+   - Use SSE transport for HTTP connectivity
+   - Entry point should expose a `run()` function
+   - Use Python 3.10+ compatible code
+   - Choose a unique port number
 
-5. **Update this README** to document your new server
+5. **Create configuration examples**:
+   ```bash
+   # Create claude-code-config.json
+   echo '{
+     "mcpServers": {
+       "my-new-server": {
+         "transport": {
+           "type": "sse",
+           "url": "http://localhost:PORT/messages"
+         }
+       }
+     }
+   }' > claude-code-config.json
+   ```
 
-6. **Add configuration examples** in a `examples/` directory within your server
+6. **Update this README** to document your new server
 
-## Configuration
+## Managing MCP Servers
 
-Each server includes example configuration files for Claude Code integration. See individual server directories for specific setup instructions.
+### List configured servers:
+```bash
+claude mcp list
+```
 
-For calcs-api, see `calcs-api/examples/claude-code-config.json` for configuration examples.
+### Remove a server:
+```bash
+claude mcp remove hello-world-mcp
+```
+
+### Check server status:
+Check if servers are running by visiting their health endpoints:
+- hello-world-mcp: http://localhost:8000/messages
+- calcs-api: http://localhost:8001/messages
+
+## Environment Configuration
+
+### calcs-api Environment Setup
+The calcs-api server requires environment variables:
+
+```bash
+cd calcs-api
+cp .env.example .env  # If available
+# Edit .env with your actual API tokens:
+# CALCS_API_TOKEN=your_token_here
+# CALCS_API_BASE_URL=https://your-api-url.com
+# CALCS_DEFAULT_CLIENT=your_client_id
+```
+
+### hello-world-mcp
+No environment configuration required - runs out of the box.
 
 ## Development Guidelines
 
 - Each server should be self-contained in its own directory
-- Follow the existing patterns for package.json scripts
+- Use Python with UV for dependency management
+- Use HTTP/SSE transport for Claude Code/Cursor compatibility
 - Include comprehensive documentation in each server's README
 - Add configuration examples for easy setup
-- Use TypeScript for type safety
 - Follow MCP protocol specifications
+- Choose unique port numbers to avoid conflicts
+
+## Troubleshooting
+
+### Server won't start
+- Check if the port is already in use: `lsof -i :8000`
+- Verify dependencies are installed: `uv sync`
+- Check environment variables for calcs-api
+
+### Claude Code can't connect
+- Verify server is running and accessible
+- Check port numbers match configuration
+- Use `claude mcp list` to see configured servers
+
+### Cursor can't connect
+- Ensure absolute URLs in configuration
+- Check that Cursor has MCP support enabled
+- Verify server URLs are accessible
 
 ## License
 

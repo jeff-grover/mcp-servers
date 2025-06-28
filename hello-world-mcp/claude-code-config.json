@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "hello-world-mcp": {
+      "transport": {
+        "type": "sse",
+        "url": "http://localhost:8000/messages"
+      }
+    }
+  }
+}
