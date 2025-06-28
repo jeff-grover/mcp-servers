@@ -6,11 +6,12 @@ Provides access to the Calcs API for retail analytics calculations and test mana
 """
 
 import asyncio
+import json
 import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Dict
 
 import httpx
 import uvicorn
@@ -31,6 +32,88 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 logger = logging.getLogger("calcs-api")
+
+# Token size and filtering utilities
+SAFE_TOKEN_LIMIT = 40000  # Conservative limit to prevent context overflow
+
+def estimate_tokens(data: Any) -> int:
+    """Estimate token count for data structure."""
+    json_str = json.dumps(data, ensure_ascii=False)
+    # Rough estimation: ~4 characters per token
+    return len(json_str) // 4
+
+def filter_json_by_keywords(data: Any, keywords: List[str]) -> Dict[str, Any]:
+    """Filter JSON data to include only fields matching keywords."""
+    if not keywords:
+        return data
+    
+    def extract_matching_fields(obj: Any, path: str = "") -> Dict[str, Any]:
+        """Recursively extract fields that match keywords."""
+        result = {}
+        
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                current_path = f"{path}.{key}" if path else key
+                
+                # Check if this field matches any keyword
+                matches_keyword = any(keyword.lower() in key.lower() or keyword.lower() in current_path.lower() 
+                                    for keyword in keywords)
+                
+                if matches_keyword:
+                    result[current_path] = value
+                elif isinstance(value, (dict, list)):
+                    # Recursively search nested structures
+                    nested_result = extract_matching_fields(value, current_path)
+                    result.update(nested_result)
+                    
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                item_path = f"{path}[{i}]" if path else f"[{i}]"
+                nested_result = extract_matching_fields(item, item_path)
+                result.update(nested_result)
+                
+        return result
+    
+    if isinstance(data, list):
+        filtered_results = []
+        for item in data:
+            filtered_item = extract_matching_fields(item)
+            if filtered_item:  # Only include items with matching fields
+                filtered_results.append(filtered_item)
+        return {
+            "filtered_results": filtered_results,
+            "total_records": len(data),
+            "filtered_fields": keywords,
+            "original_type": "list"
+        }
+    else:
+        filtered_result = extract_matching_fields(data)
+        return {
+            "filtered_results": filtered_result,
+            "filtered_fields": keywords,
+            "original_type": "object"
+        }
+
+def check_response_size_and_filter(data: Any, keywords: List[str] = None) -> Dict[str, Any]:
+    """Check if response is too large and apply filtering if needed."""
+    estimated_tokens = estimate_tokens(data)
+    
+    if estimated_tokens <= SAFE_TOKEN_LIMIT:
+        return {"status": "success", "data": data}
+    
+    if keywords:
+        # Apply filtering and return filtered results
+        filtered_data = filter_json_by_keywords(data, keywords)
+        return {"status": "success", "data": filtered_data, "was_filtered": True}
+    else:
+        # Return error with suggestion to use filtering
+        return {
+            "status": "error",
+            "error": f"Response too large (estimated {estimated_tokens:,} tokens > {SAFE_TOKEN_LIMIT:,} limit)",
+            "suggestion": "Use the '_filtered' version of this tool with keywords parameter",
+            "estimated_tokens": estimated_tokens,
+            "total_records": len(data) if isinstance(data, list) else 1
+        }
 
 
 class CalcsApiClient:
@@ -65,9 +148,26 @@ class CalcsApiClient:
         try:
             response = await self.client.get(f"{self.base_url}/v1/tests/", headers=headers)
             response.raise_for_status()
-            return {"status": "success", "data": response.json()}
+            data = response.json()
+            return check_response_size_and_filter(data)
         except Exception as e:
             logger.error(f"Get tests failed: {e}")
+            return {"status": "error", "error": str(e)}
+    
+    async def get_tests_filtered(self, client: str = "", keywords: List[str] = None) -> dict[str, Any]:
+        """Get all tests with keyword filtering for large responses."""
+        headers = {}
+        client_value = client or self.default_client
+        if client_value:
+            headers["client"] = client_value
+        
+        try:
+            response = await self.client.get(f"{self.base_url}/v1/tests/", headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return check_response_size_and_filter(data, keywords or [])
+        except Exception as e:
+            logger.error(f"Get tests filtered failed: {e}")
             return {"status": "error", "error": str(e)}
     
     async def get_test_status(self, test_id: int, client: str = "") -> dict[str, Any]:
@@ -128,9 +228,26 @@ class CalcsApiClient:
         try:
             response = await self.client.get(f"{self.base_url}/v1/results/lift-explorer/{lift_explorer_id}", headers=headers)
             response.raise_for_status()
-            return {"status": "success", "data": response.json()}
+            data = response.json()
+            return check_response_size_and_filter(data)
         except Exception as e:
             logger.error(f"Get lift explorer results failed: {e}")
+            return {"status": "error", "error": str(e)}
+    
+    async def get_lift_explorer_results_filtered(self, lift_explorer_id: str, client: str = "", keywords: List[str] = None) -> dict[str, Any]:
+        """Get lift explorer results with keyword filtering for large responses."""
+        headers = {}
+        client_value = client or self.default_client
+        if client_value:
+            headers["client"] = client_value
+            
+        try:
+            response = await self.client.get(f"{self.base_url}/v1/results/lift-explorer/{lift_explorer_id}", headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return check_response_size_and_filter(data, keywords or [])
+        except Exception as e:
+            logger.error(f"Get lift explorer results filtered failed: {e}")
             return {"status": "error", "error": str(e)}
     
     async def get_site_pair_lift_manifest(self, test_id: int, client: str = "") -> dict[str, Any]:
@@ -191,9 +308,29 @@ class CalcsApiClient:
                 params["filter_value"] = filter_value
             response = await self.client.get(f"{self.base_url}/v1/results/test/{test_id}/{filter_type}", headers=headers, params=params)
             response.raise_for_status()
-            return {"status": "success", "data": response.json()}
+            data = response.json()
+            return check_response_size_and_filter(data)
         except Exception as e:
             logger.error(f"Get test results failed: {e}")
+            return {"status": "error", "error": str(e)}
+    
+    async def get_test_results_filtered(self, test_id: int, filter_type: str, filter_value: str = None, client: str = "", keywords: List[str] = None) -> dict[str, Any]:
+        """Get test results with filtering and keyword filtering for large responses."""
+        headers = {}
+        client_value = client or self.default_client
+        if client_value:
+            headers["client"] = client_value
+            
+        try:
+            params = {}
+            if filter_value is not None:
+                params["filter_value"] = filter_value
+            response = await self.client.get(f"{self.base_url}/v1/results/test/{test_id}/{filter_type}", headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            return check_response_size_and_filter(data, keywords or [])
+        except Exception as e:
+            logger.error(f"Get test results filtered failed: {e}")
             return {"status": "error", "error": str(e)}
     
     async def download_all_test_data(self, test_id: int, client: str = "") -> dict[str, Any]:
@@ -206,9 +343,26 @@ class CalcsApiClient:
         try:
             response = await self.client.get(f"{self.base_url}/v1/results/test-download-all/{test_id}", headers=headers)
             response.raise_for_status()
-            return {"status": "success", "data": response.json()}
+            data = response.json()
+            return check_response_size_and_filter(data)
         except Exception as e:
             logger.error(f"Download all test data failed: {e}")
+            return {"status": "error", "error": str(e)}
+    
+    async def download_all_test_data_filtered(self, test_id: int, client: str = "", keywords: List[str] = None) -> dict[str, Any]:
+        """Download all chart data for test with keyword filtering for large responses."""
+        headers = {}
+        client_value = client or self.default_client
+        if client_value:
+            headers["client"] = client_value
+            
+        try:
+            response = await self.client.get(f"{self.base_url}/v1/results/test-download-all/{test_id}", headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return check_response_size_and_filter(data, keywords or [])
+        except Exception as e:
+            logger.error(f"Download all test data filtered failed: {e}")
             return {"status": "error", "error": str(e)}
     
     # Lift exploration endpoints
@@ -317,9 +471,26 @@ class CalcsApiClient:
         try:
             response = await self.client.get(f"{self.base_url}/v1/rollout/analyses", headers=headers)
             response.raise_for_status()
-            return {"status": "success", "data": response.json()}
+            data = response.json()
+            return check_response_size_and_filter(data)
         except Exception as e:
             logger.error(f"List analyses failed: {e}")
+            return {"status": "error", "error": str(e)}
+    
+    async def list_analyses_filtered(self, client: str = "", keywords: List[str] = None) -> dict[str, Any]:
+        """List all analyses with keyword filtering for large responses."""
+        headers = {}
+        client_value = client or self.default_client
+        if client_value:
+            headers["client"] = client_value
+            
+        try:
+            response = await self.client.get(f"{self.base_url}/v1/rollout/analyses", headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return check_response_size_and_filter(data, keywords or [])
+        except Exception as e:
+            logger.error(f"List analyses filtered failed: {e}")
             return {"status": "error", "error": str(e)}
     
     async def create_analysis(self, analysis_data: dict, client: str = "") -> dict[str, Any]:
@@ -480,6 +651,25 @@ async def handle_list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_tests_filtered",
+            description="Get all tests with keyword filtering for large responses",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "client": {
+                        "type": "string",
+                        "description": "Client identifier (optional, uses default if not provided)",
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords to filter fields (e.g., ['lift_percent', 'status'])",
+                    }
+                },
+                "required": [],
+            },
+        ),
+        Tool(
             name="get_test_status", 
             description="Get the status of a specific test",
             inputSchema={
@@ -548,6 +738,29 @@ async def handle_list_tools() -> list[Tool]:
                     "client": {
                         "type": "string",
                         "description": "Client identifier (optional, uses default if not provided)",
+                    }
+                },
+                "required": ["lift_explorer_id"],
+            },
+        ),
+        Tool(
+            name="get_lift_explorer_results_filtered",
+            description="Get lift explorer results with keyword filtering for large responses",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "lift_explorer_id": {
+                        "type": "string",
+                        "description": "The lift explorer ID",
+                    },
+                    "client": {
+                        "type": "string",
+                        "description": "Client identifier (optional, uses default if not provided)",
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords to filter fields (e.g., ['lift_percent', 'site_id'])",
                     }
                 },
                 "required": ["lift_explorer_id"],
@@ -635,6 +848,38 @@ async def handle_list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="get_test_results_filtered",
+            description="Get test results with keyword filtering for large responses",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "test_id": {
+                        "type": "integer",
+                        "description": "The test ID",
+                    },
+                    "filter_type": {
+                        "type": "string",
+                        "description": "Filter type (OVERALL, CUSTOMER_COHORT, CUSTOMER_SEGMENT, SITE_COHORT, SITE_PAIR, FINISHED_COHORT, SITE_TAG)",
+                        "enum": ["OVERALL", "CUSTOMER_COHORT", "CUSTOMER_SEGMENT", "SITE_COHORT", "SITE_PAIR", "FINISHED_COHORT", "SITE_TAG"]
+                    },
+                    "filter_value": {
+                        "type": "string",
+                        "description": "Filter value (optional)",
+                    },
+                    "client": {
+                        "type": "string",
+                        "description": "Client identifier (optional, uses default if not provided)",
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords to filter fields (e.g., ['lift_percent', 'status'])",
+                    }
+                },
+                "required": ["test_id", "filter_type"],
+            },
+        ),
+        Tool(
             name="download_all_test_data",
             description="Download all chart data for test",
             inputSchema={
@@ -647,6 +892,29 @@ async def handle_list_tools() -> list[Tool]:
                     "client": {
                         "type": "string",
                         "description": "Client identifier (optional, uses default if not provided)",
+                    }
+                },
+                "required": ["test_id"],
+            },
+        ),
+        Tool(
+            name="download_all_test_data_filtered",
+            description="Download all chart data for test with keyword filtering for large responses",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "test_id": {
+                        "type": "integer",
+                        "description": "The test ID",
+                    },
+                    "client": {
+                        "type": "string",
+                        "description": "Client identifier (optional, uses default if not provided)",
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords to filter fields (e.g., ['lift_percent', 'chart_data'])",
                     }
                 },
                 "required": ["test_id"],
@@ -762,6 +1030,25 @@ async def handle_list_tools() -> list[Tool]:
                     "client": {
                         "type": "string",
                         "description": "Client identifier (optional, uses default if not provided)",
+                    }
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="list_analyses_filtered",
+            description="List all analyses with keyword filtering for large responses",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "client": {
+                        "type": "string",
+                        "description": "Client identifier (optional, uses default if not provided)",
+                    },
+                    "keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords to filter fields (e.g., ['name', 'status', 'created_date'])",
                     }
                 },
                 "required": [],
@@ -918,6 +1205,10 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         elif name == "get_tests":
             client = arguments.get("client", "")
             result = await api_client.get_tests(client)
+        elif name == "get_tests_filtered":
+            client = arguments.get("client", "")
+            keywords = arguments.get("keywords", [])
+            result = await api_client.get_tests_filtered(client, keywords)
         elif name == "get_test_status":
             test_id = arguments["test_id"]
             client = arguments.get("client", "")
@@ -938,6 +1229,11 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
             lift_explorer_id = arguments["lift_explorer_id"]
             client = arguments.get("client", "")
             result = await api_client.get_lift_explorer_results(lift_explorer_id, client)
+        elif name == "get_lift_explorer_results_filtered":
+            lift_explorer_id = arguments["lift_explorer_id"]
+            client = arguments.get("client", "")
+            keywords = arguments.get("keywords", [])
+            result = await api_client.get_lift_explorer_results_filtered(lift_explorer_id, client, keywords)
         elif name == "get_site_pair_lift_manifest":
             test_id = arguments["test_id"]
             client = arguments.get("client", "")
@@ -956,10 +1252,22 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
             filter_value = arguments.get("filter_value")
             client = arguments.get("client", "")
             result = await api_client.get_test_results(test_id, filter_type, filter_value, client)
+        elif name == "get_test_results_filtered":
+            test_id = arguments["test_id"]
+            filter_type = arguments["filter_type"]
+            filter_value = arguments.get("filter_value")
+            client = arguments.get("client", "")
+            keywords = arguments.get("keywords", [])
+            result = await api_client.get_test_results_filtered(test_id, filter_type, filter_value, client, keywords)
         elif name == "download_all_test_data":
             test_id = arguments["test_id"]
             client = arguments.get("client", "")
             result = await api_client.download_all_test_data(test_id, client)
+        elif name == "download_all_test_data_filtered":
+            test_id = arguments["test_id"]
+            client = arguments.get("client", "")
+            keywords = arguments.get("keywords", [])
+            result = await api_client.download_all_test_data_filtered(test_id, client, keywords)
         
         # Lift exploration endpoints
         elif name == "get_lift_explorer_ids":
@@ -994,6 +1302,10 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[TextCon
         elif name == "list_analyses":
             client = arguments.get("client", "")
             result = await api_client.list_analyses(client)
+        elif name == "list_analyses_filtered":
+            client = arguments.get("client", "")
+            keywords = arguments.get("keywords", [])
+            result = await api_client.list_analyses_filtered(client, keywords)
         elif name == "create_analysis":
             analysis_data = arguments["analysis_data"]
             client = arguments.get("client", "")
