@@ -119,11 +119,11 @@ Start each server in its own terminal:
 ```bash
 # Terminal 1: Start hello-world server (port 8000)
 cd hello-world-mcp
-uv run hello-world-mcp
+uv run hello_world_mcp/server.py
 
 # Terminal 2: Start calcs-api server (port 8001)
 cd calcs-api-mcp
-uv run calcs-api-mcp
+uv run calcs_api/server.py
 ```
 
 ### Connecting to Claude Code
@@ -147,20 +147,12 @@ Add servers to your Cursor settings by opening Cursor settings (Cmd/Ctrl + ,) an
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "hello-world-mcp": {
-        "transport": {
-          "type": "sse",
-          "url": "http://localhost:8000/messages"
-        }
-      },
-      "calcs-api-mcp": {
-        "transport": {
-          "type": "sse", 
-          "url": "http://localhost:8001/messages"
-        }
-      }
+  "mcpServers": {      
+    "hello-world-mcp": {
+      "url": "http://localhost:8000/messages"
+    },
+    "calcs-api-mcp": {
+      "url": "http://localhost:8001/messages"
     }
   }
 }
