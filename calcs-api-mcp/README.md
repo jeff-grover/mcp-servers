@@ -160,7 +160,7 @@ uv run calcs-api-sse    # SSE transport (legacy)
    {
      "mcpServers": {
        "calcs-api-server": {
-         "url": "http://127.0.0.1:8002/mcp"
+         "url": "http://127.0.0.1:8002/mcp/"
        }
      }
    }
@@ -171,7 +171,7 @@ uv run calcs-api-sse    # SSE transport (legacy)
 **HTTP Transport (Recommended):**
 ```bash
 # Add the server to Claude Code
-claude mcp add calcs-api-http http://localhost:8002/mcp
+claude mcp add calcs-api-http http://localhost:8002/mcp/
 
 # Start Claude Code with MCP servers
 claude
@@ -198,7 +198,7 @@ claude
   "mcp": {
     "servers": {
       "calcs-api": {
-        "url": "http://localhost:8002/mcp"
+        "url": "http://localhost:8002/mcp/"
       }
     }
   }
@@ -465,7 +465,7 @@ calcs-api-mcp/
 **HTTP Transport (LM Studio, Modern Clients):**
 - Verify server is running: check for "Uvicorn running on http://localhost:8002"
 - Test endpoint: Server should show "Transport: Streamable-HTTP" on startup
-- URL format: `http://localhost:8002/mcp`
+- URL format: `http://localhost:8002/mcp/`
 
 **SSE Transport (Legacy Clients):**
 - Verify server is running: `uv run python calcs_api/server.py --sse`
@@ -477,7 +477,7 @@ calcs-api-mcp/
 - Remove and re-add server if needed: 
   ```bash
   claude mcp remove calcs-api
-  claude mcp add calcs-api http://localhost:8002/mcp
+  claude mcp add calcs-api http://localhost:8002/mcp/
   ```
 
 ### API Connection Issues

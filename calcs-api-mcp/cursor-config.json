@@ -2,7 +2,7 @@
   "mcp": {
     "servers": {
       "calcs-api": {
-        "url": "http://localhost:8002/mcp"
+        "url": "http://localhost:8002/mcp/"
       }
     }
   }
