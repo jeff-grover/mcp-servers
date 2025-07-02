@@ -5,15 +5,18 @@ description = "MCP server for Calcs API - retail analytics calculations"
 requires-python = ">=3.13"
 dependencies = [
     "mcp>=1.0.0",
-    "httpx>=0.25.0", 
+    "httpx>=0.25.0",
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
+    "fastmcp>=2.10.0",
 ]
 
 [project.scripts]
 calcs-api = "calcs_api.server:run"
+calcs-api-http = "calcs_api.server:run_http"
+calcs-api-sse = "calcs_api.server:run_sse"
 
 [build-system]
 requires = ["hatchling"]

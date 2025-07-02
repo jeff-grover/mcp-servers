@@ -1,6 +1,6 @@
 # Calcs API MCP Server
 
-A Model Context Protocol (MCP) server that provides Claude Code and Cursor with access to the Calcs API for retail analytics calculations and test management. This server runs as an HTTP service using Server-Sent Events (SSE) transport for compatibility with modern MCP clients.
+A comprehensive Model Context Protocol (MCP) server that provides **Claude Code**, **Cursor**, and **LM Studio** with access to the Calcs API for retail analytics calculations and test management. Built with FastMCP, this server supports both **HTTP** and **SSE** transports for maximum compatibility across different MCP clients.
 
 ## Features
 
@@ -39,7 +39,25 @@ This MCP server provides comprehensive access to the Calcs API endpoints, includ
 - `get_oldest_job_date` - Get the date of the oldest job for client
 - `get_newest_job_date` - Get the date of the newest job for client
 
-**Total: 25 comprehensive tools** covering the complete Calcs API surface area for retail analytics, A/B testing, and rollout analysis.
+**Total: 30+ comprehensive tools** covering the complete Calcs API surface area for retail analytics, A/B testing, and rollout analysis.
+
+## Multi-Transport Support
+
+This server supports multiple transport protocols for maximum client compatibility:
+
+### HTTP Transport (Default)
+- **Port**: 8002
+- **Endpoint**: `http://localhost:8002/mcp/`
+- **Compatible with**: LM Studio, Claude Code (HTTP mode), modern HTTP-based MCP clients
+- **Protocol**: JSON-RPC over HTTP POST
+- **Use case**: Recommended for new integrations and LM Studio
+
+### SSE Transport (Legacy)
+- **Port**: 8001  
+- **Endpoint**: `http://localhost:8001/sse/`
+- **Compatible with**: Claude Code (SSE mode), Cursor, legacy SSE-based MCP clients
+- **Protocol**: Server-Sent Events with JSON-RPC
+- **Use case**: Backward compatibility with existing configurations
 
 ## Smart Response Management
 
@@ -116,49 +134,86 @@ CALCS_API_BASE_URL=https://staging-app.marketdial.dev/calcs
 
 ### Starting the Server
 
-Run the MCP server (starts on http://localhost:8001):
+Choose your preferred transport:
 
 ```bash
-uv run calcs-api-mcp
+# HTTP Transport (default, recommended for LM Studio)
+uv run python calcs_api/server.py
+
+# Or using console commands:
+uv run calcs-api        # HTTP transport (default)
+uv run calcs-api-http   # HTTP transport (explicit)
+uv run calcs-api-sse    # SSE transport (legacy)
 ```
 
-The server will start and listen on port 8001 with the endpoint `/messages` for MCP communication.
+## Client Configuration
 
-### Connecting to Claude Code
+### LM Studio
 
-After starting the server, add it to Claude Code:
+1. Start the server with HTTP transport:
+   ```bash
+   uv run calcs-api
+   ```
 
+2. Add to your LM Studio MCP configuration:
+   ```json
+   {
+     "mcpServers": {
+       "calcs-api-server": {
+         "url": "http://127.0.0.1:8002/mcp"
+       }
+     }
+   }
+   ```
+
+### Claude Code
+
+**HTTP Transport (Recommended):**
 ```bash
 # Add the server to Claude Code
-claude mcp add --transport sse calcs-api-mcp http://localhost:8001/messages
+claude mcp add calcs-api-http http://localhost:8002/mcp
 
 # Start Claude Code with MCP servers
 claude
 ```
 
-You can now use the Calcs API tools in Claude Code with natural language:
-- "Get all tests for client RetailCorp"
-- "Show me the test status for test ID 123"
-- "Create a new rollout analysis for product launch"
-- "Get lift explorer results for ID abc-123"
-- "Download all test data for test 456"
+**SSE Transport (Legacy):**
+```bash
+# Add the server to Claude Code (legacy mode)
+claude mcp add --transport sse calcs-api-sse http://localhost:8001/sse
 
-### Connecting to Cursor
+# Start Claude Code with MCP servers
+claude
+```
 
-Add the server to your Cursor settings:
+### Cursor IDE
 
+**HTTP Transport (Recommended):**
 1. Open Cursor settings (Cmd/Ctrl + ,)
-2. Search for "MCP" settings
+2. Search for "MCP" settings  
 3. Add the following configuration:
 
 ```json
 {
   "mcp": {
     "servers": {
-      "calcs-api-mcp": {
+      "calcs-api": {
+        "url": "http://localhost:8002/mcp"
+      }
+    }
+  }
+}
+```
+
+**SSE Transport (Legacy):**
+```json
+{
+  "mcp": {
+    "servers": {
+      "calcs-api": {
         "transport": {
           "type": "sse",
-          "url": "http://localhost:8001/messages"
+          "url": "http://localhost:8001/sse"
         }
       }
     }
@@ -166,16 +221,19 @@ Add the server to your Cursor settings:
 }
 ```
 
-### Alternative Configuration Methods
+### Using the Tools
 
-You can also use the provided configuration file:
+Once connected, you can use the Calcs API tools with natural language:
+- "Get all tests for client RetailCorp"
+- "Show me the test status for test ID 123"
+- "Create a new rollout analysis for product launch"
+- "Get lift explorer results for ID abc-123"
+- "Download all test data for test 456"
+- "Filter test results by keywords: lift_percent, status"
 
-```bash
-# Using local config file
-claude --mcp-config claude-code-config.json
-```
+### Command-Line Configuration
 
-Or copy the server configuration to your global Claude Code config.
+The recommended approach is using Claude Code's command-line MCP configuration for easy server management and switching between transport modes.
 
 ## Available Tools
 
@@ -365,11 +423,19 @@ curl http://localhost:8001/messages
 
 ## Configuration
 
-The server uses these defaults:
+The server supports multiple transport configurations:
+
+### HTTP Transport (Default)
 - **Host**: localhost
+- **Port**: 8002
+- **Endpoint**: `/mcp/`
+- **Protocol**: JSON-RPC over HTTP POST
+
+### SSE Transport (Legacy)
+- **Host**: localhost  
 - **Port**: 8001
-- **Endpoint**: /messages
-- **Transport**: Server-Sent Events (SSE)
+- **Endpoint**: `/sse/`
+- **Protocol**: Server-Sent Events with JSON-RPC
 
 Environment variables must be configured for API access.
 
@@ -378,26 +444,41 @@ Environment variables must be configured for API access.
 ```
 calcs-api-mcp/
 ├── README.md                    # This file
-├── pyproject.toml              # UV project configuration
-├── claude-code-config.json     # MCP configuration example
+├── pyproject.toml              # UV project configuration  
+├── lm-studio-config.json       # LM Studio configuration example
+├── cursor-config.json          # Cursor IDE configuration example
 └── calcs_api/
     ├── __init__.py
-    └── server.py               # Main server implementation with comprehensive API client
+    └── server.py               # Unified FastMCP server (HTTP + SSE)
 ```
 
 ## Troubleshooting
 
 ### Server won't start
-- Check if port 8001 is already in use: `lsof -i :8001`
+- Check if ports are in use: `lsof -i :8002` (HTTP) or `lsof -i :8001` (SSE)
 - Verify UV installation: `uv --version`
-- Check Python version: `python --version` (should be 3.10+)
+- Check Python version: `python --version` (should be 3.13+)
 - Ensure environment variables are set in `.env` file
 
-### Claude Code can't connect
-- Verify server is running: check for "Uvicorn running on http://localhost:8001"
-- Test server endpoint: `curl http://localhost:8001/messages`
+### Client Connection Issues
+
+**HTTP Transport (LM Studio, Modern Clients):**
+- Verify server is running: check for "Uvicorn running on http://localhost:8002"
+- Test endpoint: Server should show "Transport: Streamable-HTTP" on startup
+- URL format: `http://localhost:8002/mcp`
+
+**SSE Transport (Legacy Clients):**
+- Verify server is running: `uv run python calcs_api/server.py --sse`
+- Test endpoint: Server should show "Transport: SSE" on startup  
+- URL format: `http://localhost:8001/sse`
+
+**Claude Code:**
 - Check MCP server list: `claude mcp list`
-- Remove and re-add server: `claude mcp remove calcs-api-mcp && claude mcp add --transport sse calcs-api-mcp http://localhost:8001/messages`
+- Remove and re-add server if needed: 
+  ```bash
+  claude mcp remove calcs-api
+  claude mcp add calcs-api http://localhost:8002/mcp
+  ```
 
 ### API Connection Issues
 
